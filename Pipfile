@@ -4,6 +4,12 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
+flwr = "*"
+torch = "*"
+torchvision = "*"
+grpcio = "*"
+grpcio-tools = "*"
+numpy = "*"
 
 [dev-packages]
 
