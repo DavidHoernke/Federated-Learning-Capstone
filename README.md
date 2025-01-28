@@ -2,7 +2,7 @@
 To install Pipenv:
 
 ```shell
-$ pip install --user pipenv
+pip install --user pipenv
 ```
 
 
