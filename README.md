@@ -1,4 +1,10 @@
 # Dependencies
+To install Pipenv:
+
+```shell
+$ pip install --user pipenv
+```
+
 
 Pipenv is used to manage dependencies. You can read more about it in the [Pipenv documentation](https://pipenv.pypa.io/en/latest/).
 
