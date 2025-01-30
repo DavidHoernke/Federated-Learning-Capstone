@@ -1,4 +1,3 @@
-# server.py
 import flwr as fl
 import torch
 import numpy as np
@@ -10,6 +9,7 @@ from collections import OrderedDict
 import threading
 import time
 import sys
+
 
 class ManualControlStrategy(FedAvg):
     def __init__(
@@ -59,19 +59,73 @@ class ManualControlStrategy(FedAvg):
         return super().configure_fit(server_round, parameters, client_manager)
 
     def aggregate_fit(self, server_round: int, results, failures):
+        """Aggregate model updates from clients."""
+        aggregated = super().aggregate_fit(server_round, results, failures)
         self.current_round = server_round
         print(f"\nCompleted round {server_round}/{self.num_rounds}")
-        return super().aggregate_fit(server_round, results, failures)
 
-    def aggregate_after_training(self, server_round: int, results, failures):
-        aggregated = super().aggregate_after_training(server_round, results, failures)
-        if aggregated:
-            self.final_parameters = aggregated
-            self.training_completed.set()
-            # Save the model after training completes
-            save_model(aggregated, "federated_model.pth")
-            print("\nTraining completed! Model saved to federated_model.pth")
+        if aggregated and server_round == self.num_rounds:
+            try:
+                parameters = aggregated[0]
+                self.final_parameters = parameters
+                save_model(parameters, "federated_model.pth")
+                print("\nTraining completed! Final model saved to federated_model.pth")
+                self.training_completed.set()
+            except Exception as e:
+                print(f"Error saving final model: {str(e)}")
+                import traceback
+                print(traceback.format_exc())
+
         return aggregated
+
+
+def save_model(parameters, model_path: str):
+    """Save the model parameters to a file."""
+    try:
+        if parameters:
+            # Extract the tensors from the parameters
+            if isinstance(parameters, list):
+                # If parameters is already a list of tensors/arrays
+                tensors = parameters
+            else:
+                # If parameters is a Flower Parameters object
+                tensors = parameters.tensors
+
+            # Convert parameters to PyTorch tensors
+            processed_params = []
+            for tensor in tensors:
+                if isinstance(tensor, bytes):
+                    # If tensor is in bytes format, convert to numpy array
+                    param_array = np.frombuffer(tensor, dtype=np.float32)
+                    processed_params.append(param_array)
+                else:
+                    # If tensor is already a numpy array
+                    param_array = np.asarray(tensor, dtype=np.float32)
+                    processed_params.append(param_array)
+
+            # Create the state dictionary
+            params_dict = OrderedDict({
+                f"param_{k}": torch.tensor(v)
+                for k, v in enumerate(processed_params)
+            })
+
+            # Create directory if it doesn't exist
+            import os
+            os.makedirs(os.path.dirname(model_path) if os.path.dirname(model_path) else '.', exist_ok=True)
+
+            # Save the model
+            torch.save(params_dict, model_path)
+            print(f"Successfully saved model to {model_path}")
+
+    except Exception as e:
+        print(f"Error saving model to {model_path}: {str(e)}")
+        print("\nDebug Info:")
+        print(f"Type of parameters: {type(parameters)}")
+        if hasattr(parameters, 'tensors'):
+            print(f"Number of tensors: {len(parameters.tensors)}")
+        import traceback
+        print(traceback.format_exc())
+
 
 def start_server(num_rounds: int = 3, min_clients: int = 2):
     strategy = ManualControlStrategy(
@@ -90,15 +144,6 @@ def start_server(num_rounds: int = 3, min_clients: int = 2):
 
     return strategy
 
-def save_model(parameters, model_path: str = "federated_model.pth"):
-    """Save the final model parameters to a file."""
-    if parameters:
-        params_dict = zip(range(len(parameters)), parameters)
-        state_dict = OrderedDict({f"param_{k}": torch.tensor(v) for k, v in params_dict})
-        torch.save(state_dict, model_path)
-        print(f"Model saved to {model_path}")
-    else:
-        print("No parameters available to save")
 
 if __name__ == "__main__":
     MIN_CLIENTS = 2
