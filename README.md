@@ -10,7 +10,7 @@ Pipenv is used to manage dependencies. You can read more about it in the [Pipenv
 
 Install dependencies from Pipfile:
 
-```shell
+```shell 
 pipenv install
 ```
 
