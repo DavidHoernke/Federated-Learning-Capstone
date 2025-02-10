@@ -4,10 +4,10 @@ import flwr as fl
 import numpy as np
 import torch
 
-from centralized import SimpleCNN
+from model import UNet
 
 # Initialize the global model
-global_model = SimpleCNN()
+global_model = UNet(in_channels=1, out_channels=1)
 
 
 # Custom FedAvg strategy that saves the global model after each round
