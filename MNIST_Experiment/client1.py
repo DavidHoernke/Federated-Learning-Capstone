@@ -25,7 +25,8 @@ class FlowerClient(fl.client.NumPyClient):
 
     def fit(self, parameters, config):
         set_parameters(self.net, parameters)
-        run_training(model=self.net, train_loader=self.train_loader, test_loader=self.test_loader, num_epochs=1)
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        run_training(model=self.net, train_loader=self.train_loader, test_loader=self.test_loader, num_epochs=1, device=device)
         return self.get_parameters(config), len(self.train_loader.dataset), {}
 
     def evaluate(self, parameters, config):
