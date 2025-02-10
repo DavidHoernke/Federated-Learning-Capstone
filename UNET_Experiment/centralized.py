@@ -1,37 +1,41 @@
+import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
-from torchvision import datasets, transforms
+from torchvision import transforms
+
+from SegmentationDataset import SegmentationDataset
+from model import UNet
 
 
-# Define a simple CNN model for MNIST
-class SimpleCNN(nn.Module):
-    def __init__(self):
-        super(SimpleCNN, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.fc1 = nn.Linear(64 * 14 * 14, 128)
-        self.fc2 = nn.Linear(128, 10)
-
-    def forward(self, x):
-        x = torch.relu(self.conv1(x))
-        x = self.pool(torch.relu(self.conv2(x)))
-        x = x.view(-1, 64 * 14 * 14)  # Flatten
-        x = torch.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
+def dice_score(preds, targets, epsilon=1e-8):
+    # Flatten the tensors to compute the Dice coefficient per sample
+    preds_flat = preds.view(preds.size(0), -1)
+    targets_flat = targets.view(targets.size(0), -1)
+    intersection = (preds_flat * targets_flat).sum(dim=1)
+    dice = (2.0 * intersection + epsilon) / (preds_flat.sum(dim=1) + targets_flat.sum(dim=1) + epsilon)
+    return dice.mean().item()
 
 
 # Load dataset (used for both FL clients and central training)
-def load_data(batch_size=32, train_split=0.8, client_id=0, num_clients=2):
-    """Loads a unique partition of MNIST data for each client."""
+def load_data(batch_size=4, train_split=0.8, client_id=0, num_clients=1):
+    """Loads a unique partition of data for each client."""
     transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))
+        transforms.Grayscale(num_output_channels=1),  # Ensure grayscale
+        transforms.Resize((256, 256)),  # Ensure 256x256 size
+        transforms.ToTensor()  # Convert to tensor
     ])
-    dataset = datasets.MNIST(root="./data", train=True, download=True, transform=transform)
+
+    # Get the directory of the current script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Build the path to the root of your repository (one level up from "Experiment")
+    repo_root = os.path.abspath(os.path.join(script_dir, '..'))
+    # Build the full paths to the image and mask directories within your data folder
+    img_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", "Train", "images")
+    mask_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", "Train", "infection masks")
+
+    dataset = SegmentationDataset(transform=transform, images_dir=img_path, masks_dir=mask_path)
 
     # Split dataset into non-overlapping partitions
     num_samples_per_client = len(dataset) // num_clients
@@ -47,7 +51,6 @@ def load_data(batch_size=32, train_split=0.8, client_id=0, num_clients=2):
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     return train_loader, test_loader
-
 
 
 # Train one epoch (useful for FL clients)
@@ -66,49 +69,64 @@ def train_one_epoch(model, train_loader, criterion, optimizer, device):
 
 
 # Evaluate model (used for FL clients or centralized testing)
-def evaluate(model, test_loader, criterion, device="cpu"):
+def evaluate(model, test_loader, criterion, device="cpu", threshold=0.5):
     model.to(device)
     model.eval()
     total_loss = 0
-    correct = 0
+    dice_total = 0
+
+    total_correct_pixels = 0
+    total_pixels = 0
+
     with torch.no_grad():
         for images, targets in test_loader:
             images, targets = images.to(device), targets.to(device)
             outputs = model(images)
             loss = criterion(outputs, targets)
             total_loss += loss.item()
-            predictions = outputs.argmax(dim=1)
-            correct += (predictions == targets).sum().item()
 
-    accuracy = correct / len(test_loader.dataset)
+            # Compute predictions using thresholding
+            preds = torch.sigmoid(outputs)
+            # Debug prints to inspect values before thresholding
+            print("Raw preds mean:", preds.mean().item(), "Targets mean:", targets.float().mean().item())
+            preds = (preds > threshold).float()
+            print("Binarized preds mean:", preds.mean().item())
+
+            # Compute dice score for this batch
+            dice_total += dice_score(preds, targets)
+
+            # Compute pixel-wise accuracy for this batch
+            correct_pixels = (preds == targets).sum().item()
+            batch_total_pixels = targets.numel()
+            total_correct_pixels += correct_pixels
+            total_pixels += batch_total_pixels
+
     avg_loss = total_loss / len(test_loader)
-
-    return avg_loss, accuracy  # Return loss and accuracy
+    avg_dice = dice_total / len(test_loader)
+    pixel_accuracy = total_correct_pixels / total_pixels if total_pixels > 0 else 0
+    return avg_loss, avg_dice, pixel_accuracy
 
 
 # Run training for multiple epochs (external FL manager can call this)
-import os
-
-def run_training(model, train_loader, test_loader, num_epochs=10, lr=0.001, device="cpu", save_path="mnist_cnn.pth"):
+def run_training(model, train_loader, test_loader, num_epochs=10, lr=0.001, device="cpu", save_path="Covid_UNet.pth"):
     model.to(device)
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
     for epoch in range(num_epochs):
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
-        test_loss, accuracy = evaluate(model, test_loader, criterion, device)
-        print(f"Epoch {epoch+1}: Train Loss={train_loss:.4f}, Test Loss={test_loss:.4f}, Accuracy={accuracy:.2%}")
+        test_loss, dice, pixel_acc = evaluate(model, test_loader, criterion, device)
+        print(f"Epoch {epoch+1}: Train Loss={train_loss:.4f}, Test Loss={test_loss:.4f}, Dice={dice:.4f}, Pixel Accuracy={pixel_acc:.2%}")
 
     # Save trained model
     torch.save(model.state_dict(), save_path)
     print(f"Model saved to {save_path}")
 
 
-
 # Main execution (No loops, just function calls)
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(device)
-    model = SimpleCNN()
+    print("Using device:", device)
+    model = UNet(in_channels=1, out_channels=1).to(device)
     train_loader, test_loader = load_data()
     run_training(model, train_loader, test_loader, num_epochs=10, device=device)
