@@ -129,4 +129,4 @@ if __name__ == '__main__':
     print("Using device:", device)
     model = UNet(in_channels=1, out_channels=1).to(device)
     train_loader, test_loader = load_data()
-    run_training(model, train_loader, test_loader, num_epochs=10, device=device)
+    run_training(model, train_loader, test_loader, num_epochs=15, device=device, save_path="Centralized_UNet.pth")
