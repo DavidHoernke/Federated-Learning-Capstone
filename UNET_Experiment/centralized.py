@@ -124,9 +124,13 @@ def run_training(model, train_loader, test_loader, num_epochs=10, lr=0.001, devi
 
 
 # Main execution (No loops, just function calls)
+from torchsummary import summary
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
     model = UNet(in_channels=1, out_channels=1).to(device)
+    # Print the summary of the model
+    summary(model, input_size=(1, 256, 256))
+
     train_loader, test_loader = load_data()
     run_training(model, train_loader, test_loader, num_epochs=15, device=device, save_path="Centralized_UNet.pth")

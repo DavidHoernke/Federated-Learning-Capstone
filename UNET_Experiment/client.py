@@ -9,7 +9,7 @@ from centralized import load_data, evaluate, run_training
 
 # Get client ID from command-line argument
 client_id = int(sys.argv[1]) if len(sys.argv) > 1 else 0
-num_clients = 2  # Adjust based on how many clients you are running
+num_clients = 50  # Adjust based on how many clients you are running
 
 def set_parameters(model, parameters):
     params_dict = zip(model.state_dict().keys(), parameters)
