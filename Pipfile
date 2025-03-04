@@ -8,10 +8,12 @@ flwr = "*"
 grpcio = "*"
 grpcio-tools = "*"
 numpy = "<2.0"
-matplotlib = "*"
+torchaudio = "*"
 torch = "*"
 torchvision = "*"
-torchaudio = "*"
+segmentation-models-pytorch = "*"
+matplotlib = "*"
+pillow = "*"
 
 [dev-packages]
 

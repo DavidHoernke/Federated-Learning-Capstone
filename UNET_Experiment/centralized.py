@@ -21,10 +21,19 @@ def dice_score(preds, targets, epsilon=1e-8):
 # Load dataset (used for both FL clients and central training)
 def load_data(batch_size=4, train_split=0.8, client_id=0, num_clients=1):
     """Loads a unique partition of data for each client."""
-    transform = transforms.Compose([
-        transforms.Grayscale(num_output_channels=1),  # Ensure grayscale
-        transforms.Resize((256, 256)),  # Ensure 256x256 size
-        transforms.ToTensor()  # Convert to tensor
+    image_transform = transforms.Compose([
+        transforms.Grayscale(num_output_channels=1),
+        transforms.Resize((256, 256)),
+        transforms.ToTensor(),
+        # Optional: transforms.Normalize([0.5], [0.5]) etc.
+    ])
+
+    # For the masks (already single-channel 0/255 or 0/1)
+    mask_transform = transforms.Compose([
+        transforms.Resize((256, 256)),
+        transforms.ToTensor(),
+        # If needed, threshold to ensure 0/1
+        # transforms.Lambda(lambda x: (x > 0.5).float())
     ])
 
     # Get the directory of the current script
@@ -35,7 +44,16 @@ def load_data(batch_size=4, train_split=0.8, client_id=0, num_clients=1):
     img_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", "Train", "images")
     mask_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", "Train", "infection masks")
 
-    dataset = SegmentationDataset(transform=transform, images_dir=img_path, masks_dir=mask_path)
+    dataset = SegmentationDataset(
+        images_dir=img_path,
+        masks_dir=mask_path,
+        transform_img=image_transform,
+        transform_mask=mask_transform
+    )
+
+    image, mask = dataset[0]
+    print("Image tensor range:", image.min().item(), image.max().item())
+    print("Mask tensor unique values:", torch.unique(mask))
 
     # Split dataset into non-overlapping partitions
     num_samples_per_client = len(dataset) // num_clients
@@ -88,9 +106,9 @@ def evaluate(model, test_loader, criterion, device="cpu", threshold=0.5):
             # Compute predictions using thresholding
             preds = torch.sigmoid(outputs)
             # Debug prints to inspect values before thresholding
-            print("Raw preds mean:", preds.mean().item(), "Targets mean:", targets.float().mean().item())
+            # print("Raw preds mean:", preds.mean().item(), "Targets mean:", targets.float().mean().item())
             preds = (preds > threshold).float()
-            print("Binarized preds mean:", preds.mean().item())
+            # print("Binarized preds mean:", preds.mean().item())
 
             # Compute dice score for this batch
             dice_total += dice_score(preds, targets)
