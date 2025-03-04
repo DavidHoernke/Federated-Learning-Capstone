@@ -18,6 +18,8 @@ This command creates a dedicated virtual environment isolated from the system-wi
 
 ### Using the environment: method 1
 
+*** I have found personally I am already in a VENV when opening a terminal - run ```deactivate``` first before creating the pipenv env
+
 Activate the Pipenv shell:
 
 ```shell
