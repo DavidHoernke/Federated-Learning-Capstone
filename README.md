@@ -59,3 +59,16 @@ If you needed to add packages to the project:
 ```shell
 pipenv install <package>
 ```
+
+### Retrieving Dependencies
+```
+pipenv run pip freeze > requirements.txt
+```
+
+to create a requirements.txt file
+
+in colab run
+
+!pip install -r requirements.txt
+
+to install exact env from pipenv
