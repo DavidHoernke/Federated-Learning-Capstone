@@ -22,7 +22,7 @@ def test_random_predictions(num_samples=5, threshold=0.5):
     model = UNet(in_channels=1, out_channels=1).to(device)
 
     # Optionally load trained weights if available.
-    model_path = "Centralized_UNet.pth"
+    model_path = "./models/global_FL_model.pth"
     if os.path.exists(model_path):
         model.load_state_dict(torch.load(model_path, map_location=device))
         print(f"Loaded model from {model_path}")
@@ -72,7 +72,7 @@ def test_random_predictions(num_samples=5, threshold=0.5):
 
     plt.tight_layout()
     plt.show(block=False)
-    plt.pause(5)  # Display for 5 seconds without blocking.
+    plt.pause(15)  # Display for 5 seconds without blocking.
     plt.close(fig)
     print(f"Displayed {num_samples} random predictions.")
 
@@ -84,7 +84,7 @@ def compute_dice_stats(threshold=0.5):
     model = UNet(in_channels=1, out_channels=1).to(device)
 
     # Load trained model weights if available.
-    model_path = "Centralized_UNet.pth"
+    model_path = "./models/global_FL_model.pth"
     if os.path.exists(model_path):
         model.load_state_dict(torch.load(model_path, map_location=device))
         print(f"Loaded model from {model_path}")
@@ -98,6 +98,7 @@ def compute_dice_stats(threshold=0.5):
 
 
 if __name__ == "__main__":
+
     print("Running random predictions test...")
     test_random_predictions(num_samples=5)
 
