@@ -19,7 +19,7 @@ def dice_score(preds, targets, epsilon=1e-8):
     return dice.mean().item()
 
 
-def load_data(batch_size=4, train_split=0.8, client_id=0, num_clients=1):
+def load_data(batch_size=4, client_id=0, num_clients=1):
     image_transform = transforms.Compose([
         transforms.Grayscale(num_output_channels=1),
         transforms.Resize((256, 256)),
@@ -34,29 +34,43 @@ def load_data(batch_size=4, train_split=0.8, client_id=0, num_clients=1):
     # Get the directory of the current script and then the repo root
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.abspath(os.path.join(script_dir, '..'))
-    img_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", "Train", "images")
-    mask_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", "Train", "infection masks")
 
-    dataset = SegmentationDataset(
-        images_dir=img_path,
-        masks_dir=mask_path,
+    # Paths for training data
+    train_img_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", "Train", "images")
+    train_mask_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", "Train", "infection masks")
+
+    # Paths for test data (note "Test" instead of "Train")
+    test_img_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", "Test", "images")
+    test_mask_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", "Test", "infection masks")
+
+    # Create the full training dataset
+    train_dataset_full = SegmentationDataset(
+        images_dir=train_img_path,
+        masks_dir=train_mask_path,
         transform_img=image_transform,
         transform_mask=mask_transform
     )
 
-    num_samples_per_client = len(dataset) // num_clients
+    # Create the test dataset
+    test_dataset = SegmentationDataset(
+        images_dir=test_img_path,
+        masks_dir=test_mask_path,
+        transform_img=image_transform,
+        transform_mask=mask_transform
+    )
+
+    # Partition training dataset among clients if needed.
+    num_samples_per_client = len(train_dataset_full) // num_clients
     start_idx = client_id * num_samples_per_client
     end_idx = (client_id + 1) * num_samples_per_client
-    client_dataset = torch.utils.data.Subset(dataset, list(range(start_idx, end_idx)))
+    train_dataset = torch.utils.data.Subset(train_dataset_full, list(range(start_idx, end_idx)))
 
-    train_size = int(train_split * len(client_dataset))
-    test_size = len(client_dataset) - train_size
-    train_dataset, test_dataset = random_split(client_dataset, [train_size, test_size])
-
+    # Create data loaders
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     return train_loader, test_loader
+
 
 
 def train_one_epoch(model, train_loader, criterion, optimizer, device):
