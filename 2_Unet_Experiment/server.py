@@ -6,7 +6,7 @@ import numpy as np
 import torch
 
 from centralized import UNet
-from STARTING_PARAMETERS import *
+from StartConfig import *
 
 # Initialize the global model
 global_model = UNet(in_channels=1, out_channels=1)
@@ -63,7 +63,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         return aggregated_loss, aggregated_metrics
 
     def should_stop(self, server_round: int) -> bool: #Early stopping logic
-        if self.no_improvement_rounds >= NUM_ROUNDS_NO_IMPROVEMENT_EARLY_STOP:
+        if self.no_improvement_rounds >= NUM_ROUNDS_NO_IMPROVEMENT_EARLY_STOP and NUM_ROUNDS_NO_IMPROVEMENT_EARLY_STOP!=0:
             print(f"Early stopping: Global DICE did not improve for {NUM_ROUNDS_NO_IMPROVEMENT_EARLY_STOP} consecutive rounds.")
             return True
         return False
@@ -74,16 +74,12 @@ if __name__ == "__main__":
     # Create a strategy that waits for the specified number of clients.
     strategy = SaveModelStrategy(
         fraction_fit= CLIENT_PARTICIPATION_FRACTION,
-        min_available_clients= CLIENT_PARTICIPATION_FRACTION,
-        min_fit_clients= CLIENT_PARTICIPATION_FRACTION,
-        min_evaluate_clients= CLIENT_PARTICIPATION_FRACTION,
-        fraction_evaluate_clients= CLIENT_PARTICIPATION_FRACTION
     )
 
     # Start the Flower server; training will stop early if early stopping is triggered.
     fl.server.start_server(
         server_address="127.0.0.1:8000",
-        config=fl.server.ServerConfig(num_rounds=10),
+        config=fl.server.ServerConfig(num_rounds=NUM_ROUNDS),
         strategy=strategy,
     )
 

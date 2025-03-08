@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 from SegmentationDataset import SegmentationDataset
 from model import UNet
-from STARTING_PARAMETERS import *
+from StartConfig import *
 
 
 def dice_score(preds, targets, epsilon=1e-8):
@@ -182,12 +182,12 @@ def run_training(model, train_loader, test_loader, num_epochs=10, lr=0.001, devi
         )
 
         # Visualize predictions non-blockingly at the end of each epoch.
-        visualize_predictions(model, test_loader, device)
+        # visualize_predictions(model, test_loader, device)
 
         # Save an intermediate checkpoint for this epoch.
-        checkpoint_path = f"Centralized_UNet_epoch_{epoch + 1}.pth"
-        torch.save(model.state_dict(), checkpoint_path)
-        print(f"Checkpoint saved: {checkpoint_path}")
+        # checkpoint_path = f"Centralized_UNet_epoch_{epoch + 1}.pth"
+        # torch.save(model.state_dict(), checkpoint_path)
+        # print(f"Checkpoint saved: {checkpoint_path}")
 
         # Early stopping logic if patience > 0.
         if early_stopping_patience > 0:
@@ -203,12 +203,12 @@ def run_training(model, train_loader, test_loader, num_epochs=10, lr=0.001, devi
                 break
 
     # Save the best model if early stopping was triggered, else save the last state.
-    if best_model_state is not None:
-        torch.save(best_model_state, save_path)
-        print(f"Final model saved to {save_path}")
-    else:
-        torch.save(model.state_dict(), save_path)
-        print(f"Final model saved to {save_path}")
+    # if best_model_state is not None:
+    #     torch.save(best_model_state, save_path)
+    #     print(f"Final model saved to {save_path}")
+    # else:
+    #     torch.save(model.state_dict(), save_path)
+    #     print(f"Final model saved to {save_path}")
 
 
 def visualize_predictions(model, test_loader, device, threshold=0.5):

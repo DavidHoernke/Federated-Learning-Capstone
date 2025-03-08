@@ -6,7 +6,7 @@ import torch
 
 from model import UNet
 from centralized import load_data, evaluate, run_training
-from STARTING_PARAMETERS import *
+from StartConfig import *
 
 # Get client ID (first argument) and number of clients (second argument, default to 50)
 client_id = int(sys.argv[1]) if len(sys.argv) > 1 else 0
