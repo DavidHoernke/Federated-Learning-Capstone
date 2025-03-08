@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 
 from SegmentationDataset import SegmentationDataset
 from model import UNet
+from STARTING_PARAMETERS import *
 
 
 def dice_score(preds, targets, epsilon=1e-8):
@@ -19,7 +20,51 @@ def dice_score(preds, targets, epsilon=1e-8):
     return dice.mean().item()
 
 
-def load_data(batch_size=4, train_split=0.8, client_id=0, num_clients=1):
+def load_data(batch_size=BATCH_SIZE, train_split=0.8, client_id=0, num_clients=1, train=True):
+    image_transform = transforms.Compose([
+        transforms.Grayscale(num_output_channels=1),
+        transforms.Resize((256, 256)),
+        transforms.ToTensor(),
+    ])
+    mask_transform = transforms.Compose([
+        transforms.Resize((256, 256)),
+        transforms.ToTensor(),
+        # Optionally add: transforms.Lambda(lambda x: (x > 0.5).float())
+    ])
+
+    # Get the directory of the current script and then the repo root
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(script_dir, '..'))
+
+    dataset_type = "Train" if train else "Test"
+    print(f"Loading {dataset_type} dataset...")
+
+    img_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", dataset_type, "images")
+    mask_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", dataset_type, "infection masks")
+
+    dataset = SegmentationDataset(
+        images_dir=img_path,
+        masks_dir=mask_path,
+        transform_img=image_transform,
+        transform_mask=mask_transform
+    )
+
+    # Use round-robin selection to pick indices across the entire dataset
+    client_indices = list(range(client_id, len(dataset), num_clients))
+    client_dataset = torch.utils.data.Subset(dataset, client_indices)
+
+    # Split the client dataset into train and test sets
+    train_size = int(train_split * len(client_dataset))
+    test_size = len(client_dataset) - train_size
+    train_dataset, test_dataset = random_split(client_dataset, [train_size, test_size])
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+    return train_loader, test_loader
+
+
+def load_data_nonIID(batch_size=BATCH_SIZE, train_split=0.8, client_id=0, num_clients=1):
     image_transform = transforms.Compose([
         transforms.Grayscale(num_output_channels=1),
         transforms.Resize((256, 256)),
@@ -101,17 +146,26 @@ def evaluate(model, test_loader, criterion, device="cpu", threshold=0.5):
 
 
 def run_training(model, train_loader, test_loader, num_epochs=10, lr=0.001, device="cpu",
-                 save_path="Centralized_UNet.pth"):
+                 save_path="IID_Centralized_UNet.pth", early_stopping_patience=0):
+    """
+    Train the model and apply early stopping based on test loss improvement.
+    If early_stopping_patience is 0, early stopping is disabled.
+    """
     model.to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
+
+    best_loss = float("inf")
+    patience_counter = 0
+    best_model_state = None
 
     print("Starting training...")
     for epoch in range(num_epochs):
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
         test_loss, dice, pixel_acc = evaluate(model, test_loader, criterion, device)
         print(
-            f"Epoch {epoch + 1}/{num_epochs}: Train Loss={train_loss:.4f}, Test Loss={test_loss:.4f}, Dice={dice:.4f}, Pixel Accuracy={pixel_acc:.2%}")
+            f"Epoch {epoch + 1}/{num_epochs}: Train Loss={train_loss:.4f}, Test Loss={test_loss:.4f}, Dice={dice:.4f}, Pixel Accuracy={pixel_acc:.2%}"
+        )
 
         # Visualize predictions non-blockingly at the end of each epoch.
         visualize_predictions(model, test_loader, device)
@@ -121,8 +175,26 @@ def run_training(model, train_loader, test_loader, num_epochs=10, lr=0.001, devi
         torch.save(model.state_dict(), checkpoint_path)
         print(f"Checkpoint saved: {checkpoint_path}")
 
-    torch.save(model.state_dict(), save_path)
-    print(f"Final model saved to {save_path}")
+        # Early stopping logic if patience > 0.
+        if early_stopping_patience > 0:
+            if test_loss < best_loss:
+                best_loss = test_loss
+                patience_counter = 0
+                best_model_state = model.state_dict()
+            else:
+                patience_counter += 1
+
+            if patience_counter >= early_stopping_patience:
+                print(f"Early stopping triggered. Test loss did not improve for {early_stopping_patience} epochs.")
+                break
+
+    # Save the best model if early stopping was triggered, else save the last state.
+    if best_model_state is not None:
+        torch.save(best_model_state, save_path)
+        print(f"Final model saved to {save_path}")
+    else:
+        torch.save(model.state_dict(), save_path)
+        print(f"Final model saved to {save_path}")
 
 
 def visualize_predictions(model, test_loader, device, threshold=0.5):
@@ -158,5 +230,13 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
     model = UNet(in_channels=1, out_channels=1).to(device)
     train_loader, test_loader = load_data()
-    run_training(model, train_loader, test_loader, num_epochs=15, lr=0.001, device=device,
-                 save_path="Centralized_UNet.pth")
+    run_training(
+        model,
+        train_loader,
+        test_loader,
+        num_epochs=25,
+        lr=0.001,
+        device=device,
+        save_path="Centralized_UNet.pth",
+        early_stopping_patience=4  # Set to 0 to disable early stopping
+    )
