@@ -76,7 +76,7 @@ def visualize_predictions(model, test_loader, device, num_samples=5, threshold=0
 
 if __name__ == "__main__":
     # Define the model path once here.
-    model_path = "./Centralized_UNet.pth"
+    model_path = "10,25,2,4,1,0.5,25,Global.pth"
 
     # Load the model and test data once.
     model, test_loader, device = load_model_and_data(model_path)
