@@ -51,8 +51,10 @@ def load_data(batch_size=BATCH_SIZE, client_id=0, num_clients=1):
     ])
 
     # Get the directory of this file and then the repo root
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(script_dir, '..'))
+    #script_dir = os.path.dirname(os.path.abspath(__file__))
+    #repo_root = os.path.abspath(os.path.join(script_dir, '..'))
+    repo_root = os.path.abspath(os.path.join(("/content")))
+
 
     # --------------------
     # 1) Load the TRAIN dataset
@@ -109,8 +111,10 @@ def load_data_nonIID(batch_size=BATCH_SIZE, train_split=0.8, client_id=0, num_cl
     ])
 
     # Get the directory of the current script and then the repo root
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(script_dir, '..'))
+    #script_dir = os.path.dirname(os.path.abspath(__file__))
+    #repo_root = os.path.abspath(os.path.join(script_dir, '..'))
+    repo_root = os.path.abspath(os.path.join(("/content")))
+
 
     # Paths for training data
     train_img_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", "Train", "images")
@@ -234,7 +238,7 @@ def run_training(
         optimizer = optim.Adam(model.parameters(), lr=lr)
         scheduler = None
 
-    best_loss = float("inf")
+    best_dice = 0
     patience_counter = 0
     best_model_state = None
 
@@ -268,10 +272,12 @@ def run_training(
 
         # 5) Early Stopping
         if early_stopping_patience > 0:
-            if test_loss < best_loss:
-                best_loss = test_loss
+            if dice > best_dice:
+                best_dice = dice
                 patience_counter = 0
                 best_model_state = model.state_dict()
+                torch.save(best_model_state, save_path)
+                print(f'Saving Best Model with dice:{best_dice}')
             else:
                 patience_counter += 1
 
@@ -282,12 +288,12 @@ def run_training(
                 break
 
     # Save the best model if early stopping was triggered; otherwise, save final
-    if best_model_state is not None:
-        torch.save(best_model_state, save_path)
-        print(f"[Early Stopping] Final model saved to {save_path}")
-    else:
-        torch.save(model.state_dict(), save_path)
-        print(f"Final model saved to {save_path}")
+    # if best_model_state is not None:
+    #     torch.save(best_model_state, save_path)
+    #     print(f"[Early Stopping] Final model saved to {save_path}")
+    # else:
+    #     torch.save(model.state_dict(), save_path)
+    #     print(f"Final model saved to {save_path}")
 
 def visualize_predictions(model, test_loader, device, threshold=0.5):
     model.eval()
@@ -329,7 +335,7 @@ if __name__ == "__main__":
         num_epochs=75,
         lr=0.001,
         device=device,
-        save_path="Centralized_UNet.pth",
-        early_stopping_patience=8,  # Set to 0 to disable early stopping
+        save_path="Centralized_UNet_4.pth",
+        early_stopping_patience=10,  # Set to 0 to disable early stopping
         is_centralized=True
     )
