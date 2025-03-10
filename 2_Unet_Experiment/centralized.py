@@ -2,6 +2,7 @@ import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader, random_split, Subset
 from torchvision import transforms
 import matplotlib.pyplot as plt
@@ -190,37 +191,82 @@ def evaluate(model, test_loader, criterion, device="cpu", threshold=0.5):
     return avg_loss, avg_dice, pixel_accuracy
 
 
-def run_training(model, train_loader, test_loader, num_epochs=10, lr=0.001, device="cpu",
-                 save_path="IID_Centralized_UNet.pth", early_stopping_patience=0):
+def run_training(
+        model,
+        train_loader,
+        test_loader,
+        num_epochs=10,
+        lr=0.001,
+        device="cpu",
+        save_path="IID_Centralized_UNet.pth",
+        early_stopping_patience=0,
+        is_centralized=False,
+):
     """
-    Train the model and apply early stopping based on test loss improvement.
-    If early_stopping_patience is 0, early stopping is disabled.
+    Train the model and apply:
+      - optional LR scheduler and weight decay (if is_centralized=True).
+      - optional early stopping based on test loss improvement (if early_stopping_patience > 0).
+
+    Args:
+        model (nn.Module): The model to train.
+        train_loader (DataLoader): Training data loader.
+        test_loader (DataLoader): Validation/test data loader.
+        num_epochs (int): Number of epochs to train.
+        lr (float): Base learning rate for optimizer.
+        device (str): 'cuda' or 'cpu'.
+        save_path (str): Path to save the best model state if early stopping triggers.
+        early_stopping_patience (int): Epochs of no improvement before stopping. 0 disables early stopping.
+        is_centralized (bool): If True, enables extra regularization (weight decay) and LR scheduling.
     """
+
     model.to(device)
     criterion = nn.BCEWithLogitsLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+
+    # ----------------------------
+    # Choose optimizer differently for centralized vs. federated
+    # ----------------------------
+    if is_centralized:
+        # Extra regularization + LR scheduler
+        optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+        scheduler = StepLR(optimizer, step_size=10, gamma=0.5)  # Example: step down every 10 epochs
+    else:
+        # Default (federated) settings: no weight decay, no scheduler
+        optimizer = optim.Adam(model.parameters(), lr=lr)
+        scheduler = None
 
     best_loss = float("inf")
     patience_counter = 0
     best_model_state = None
 
-    print("Starting training...")
     for epoch in range(num_epochs):
-        train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        # 1) Train
+        train_loss = 0.0
+        model.train()
+        for images, targets in train_loader:
+            images, targets = images.to(device), targets.to(device)
+            optimizer.zero_grad()
+            outputs = model(images)
+            loss = criterion(outputs, targets)
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item()
+        train_loss /= len(train_loader)
+
+        # 2) Evaluate
         test_loss, dice, pixel_acc = evaluate(model, test_loader, criterion, device)
+
+        # 3) Print results
         print(
-            f"Epoch {epoch + 1}/{num_epochs}: Train Loss={train_loss:.4f}, Test Loss={test_loss:.4f}, Dice={dice:.4f}, Pixel Accuracy={pixel_acc:.2%}"
+            f"Epoch {epoch + 1}/{num_epochs} | "
+            f"Train Loss={train_loss:.4f}, Test Loss={test_loss:.4f}, "
+            f"Dice={dice:.4f}, Pixel Acc={pixel_acc:.2%}"
         )
 
-        # Visualize predictions non-blockingly at the end of each epoch.
-        # visualize_predictions(model, test_loader, device)
+        # 4) Scheduler step if is_centralized
+        if scheduler:
+            scheduler.step()
 
-        # Save an intermediate checkpoint for this epoch.
-        # checkpoint_path = f"Centralized_UNet_epoch_{epoch + 1}.pth"
-        # torch.save(model.state_dict(), checkpoint_path)
-        # print(f"Checkpoint saved: {checkpoint_path}")
-
-        # Early stopping logic if patience > 0.
+        # 5) Early Stopping
         if early_stopping_patience > 0:
             if test_loss < best_loss:
                 best_loss = test_loss
@@ -230,17 +276,18 @@ def run_training(model, train_loader, test_loader, num_epochs=10, lr=0.001, devi
                 patience_counter += 1
 
             if patience_counter >= early_stopping_patience:
-                print(f"Early stopping triggered. Test loss did not improve for {early_stopping_patience} epochs.")
+                print(
+                    f"Early stopping triggered. No improvement for {early_stopping_patience} epochs."
+                )
                 break
 
-    # Save the best model if early stopping was triggered, else save the last state.
-    # if best_model_state is not None:
-    #     torch.save(best_model_state, save_path)
-    #     print(f"Final model saved to {save_path}")
-    # else:
-    #     torch.save(model.state_dict(), save_path)
-    #     print(f"Final model saved to {save_path}")
-
+    # Save the best model if early stopping was triggered; otherwise, save final
+    if best_model_state is not None:
+        torch.save(best_model_state, save_path)
+        print(f"[Early Stopping] Final model saved to {save_path}")
+    else:
+        torch.save(model.state_dict(), save_path)
+        print(f"Final model saved to {save_path}")
 
 def visualize_predictions(model, test_loader, device, threshold=0.5):
     model.eval()
@@ -279,9 +326,10 @@ if __name__ == "__main__":
         model,
         train_loader,
         test_loader,
-        num_epochs=25,
+        num_epochs=75,
         lr=0.001,
         device=device,
         save_path="Centralized_UNet.pth",
-        early_stopping_patience=4  # Set to 0 to disable early stopping
+        early_stopping_patience=8,  # Set to 0 to disable early stopping
+        is_centralized=True
     )
