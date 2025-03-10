@@ -2,7 +2,7 @@ import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, Subset
 from torchvision import transforms
 import matplotlib.pyplot as plt
 
@@ -20,7 +20,25 @@ def dice_score(preds, targets, epsilon=1e-8):
     return dice.mean().item()
 
 
-def load_data(batch_size=BATCH_SIZE, train_split=0.8, client_id=0, num_clients=1, train=True):
+def load_data(batch_size=BATCH_SIZE, client_id=0, num_clients=1):
+    """
+    Loads the entire Train directory as the training dataset, and
+    the entire Test directory as the testing dataset. Optionally,
+    partitions the train data among multiple clients using a
+    round-robin approach, but leaves the full test set intact
+    for each client.
+
+    Args:
+        batch_size (int): Batch size used in the DataLoader.
+        client_id (int): The current client's ID (0-based).
+        num_clients (int): How many total clients are splitting the dataset.
+
+    Returns:
+        train_loader (DataLoader): DataLoader for the training subset (per client).
+        test_loader (DataLoader): DataLoader for the entire test set.
+    """
+
+    # Basic transforms (could tweak further if needed)
     image_transform = transforms.Compose([
         transforms.Grayscale(num_output_channels=1),
         transforms.Resize((256, 256)),
@@ -29,37 +47,50 @@ def load_data(batch_size=BATCH_SIZE, train_split=0.8, client_id=0, num_clients=1
     mask_transform = transforms.Compose([
         transforms.Resize((256, 256)),
         transforms.ToTensor(),
-        # Optionally add: transforms.Lambda(lambda x: (x > 0.5).float())
     ])
 
-    # Get the directory of the current script and then the repo root
+    # Get the directory of this file and then the repo root
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.abspath(os.path.join(script_dir, '..'))
 
-    dataset_type = "Train" if train else "Test"
-    print(f"Loading {dataset_type} dataset...")
+    # --------------------
+    # 1) Load the TRAIN dataset
+    # --------------------
+    train_img_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", "Train", "images")
+    train_mask_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", "Train", "infection masks")
 
-    img_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", dataset_type, "images")
-    mask_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", dataset_type, "infection masks")
-
-    dataset = SegmentationDataset(
-        images_dir=img_path,
-        masks_dir=mask_path,
+    train_dataset_full = SegmentationDataset(
+        images_dir=train_img_path,
+        masks_dir=train_mask_path,
         transform_img=image_transform,
         transform_mask=mask_transform
     )
 
-    # Use round-robin selection to pick indices across the entire dataset
-    client_indices = list(range(client_id, len(dataset), num_clients))
-    client_dataset = torch.utils.data.Subset(dataset, client_indices)
+    # Partition the train dataset in a round-robin fashion if there are multiple clients
+    train_indices = list(range(client_id, len(train_dataset_full), num_clients))
+    train_dataset_client = Subset(train_dataset_full, train_indices)
 
-    # Split the client dataset into train and test sets
-    train_size = int(train_split * len(client_dataset))
-    test_size = len(client_dataset) - train_size
-    train_dataset, test_dataset = random_split(client_dataset, [train_size, test_size])
+    train_loader = DataLoader(train_dataset_client, batch_size=batch_size, shuffle=True)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    # --------------------
+    # 2) Load the TEST dataset (always entire test set)
+    # --------------------
+    test_img_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", "Test", "images")
+    test_mask_path = os.path.join(repo_root, "data", "COVIDQU", "Infection Segmentation Data", "Test", "infection masks")
+
+    test_dataset_full = SegmentationDataset(
+        images_dir=test_img_path,
+        masks_dir=test_mask_path,
+        transform_img=image_transform,
+        transform_mask=mask_transform
+    )
+
+    # We do NOT partition the test set among clients.
+    # Everyone evaluates on the entire test set to get consistent metrics.
+    test_loader = DataLoader(test_dataset_full, batch_size=batch_size, shuffle=False)
+
+    # Optional debug prints
+    print(f"[Client {client_id}] Train samples: {len(train_dataset_client)} / Test samples: {len(test_dataset_full)}")
 
     return train_loader, test_loader
 
