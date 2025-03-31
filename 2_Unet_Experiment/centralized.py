@@ -51,9 +51,9 @@ def load_data(batch_size=BATCH_SIZE, client_id=0, num_clients=1):
     ])
 
     # Get the directory of this file and then the repo root
-    #script_dir = os.path.dirname(os.path.abspath(__file__))
-    #repo_root = os.path.abspath(os.path.join(script_dir, '..'))
-    repo_root = os.path.abspath(os.path.join(("/content")))
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(script_dir, '..'))
+    # repo_root = os.path.abspath(os.path.join(("/content")))
 
 
     # --------------------
@@ -111,9 +111,9 @@ def load_data_nonIID(batch_size=BATCH_SIZE, train_split=0.8, client_id=0, num_cl
     ])
 
     # Get the directory of the current script and then the repo root
-    #script_dir = os.path.dirname(os.path.abspath(__file__))
-    #repo_root = os.path.abspath(os.path.join(script_dir, '..'))
-    repo_root = os.path.abspath(os.path.join(("/content")))
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(script_dir, '..'))
+    # repo_root = os.path.abspath(os.path.join(("/content")))
 
 
     # Paths for training data

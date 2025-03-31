@@ -1,4 +1,6 @@
 import os
+import random
+
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
@@ -108,26 +110,28 @@ def visualize_predictions(model, test_loader, device, num_samples=3, threshold=0
     num_samples = min(num_samples, images.size(0))
     fig, axes = plt.subplots(num_samples, 3, figsize=(12, 4 * num_samples))
 
-    # If only one sample, make axes iterable
+    # Ensure axes is always iterable (if only one sample, axes might not be a 2D array)
     if num_samples == 1:
         axes = [axes]
 
-    for i in range(num_samples):
+    # Select num_samples distinct random indices from the batch
+    sample_indices = random.sample(range(images.size(0)), num_samples)
+    for j, i in enumerate(sample_indices):
         img = images[i].cpu().squeeze().numpy()
         target = targets[i].cpu().squeeze().numpy()
         pred = preds[i].cpu().squeeze().numpy()
 
-        axes[i][0].imshow(img, cmap="gray")
-        axes[i][0].set_title("Input Image")
-        axes[i][0].axis("off")
+        axes[j][0].imshow(img, cmap="gray")
+        axes[j][0].set_title("Input Image")
+        axes[j][0].axis("off")
 
-        axes[i][1].imshow(target, cmap="gray")
-        axes[i][1].set_title("Ground Truth")
-        axes[i][1].axis("off")
+        axes[j][1].imshow(target, cmap="gray")
+        axes[j][1].set_title("Ground Truth")
+        axes[j][1].axis("off")
 
-        axes[i][2].imshow(pred, cmap="gray")
-        axes[i][2].set_title("Prediction")
-        axes[i][2].axis("off")
+        axes[j][2].imshow(pred, cmap="gray")
+        axes[j][2].set_title("Prediction")
+        axes[j][2].axis("off")
 
     plt.tight_layout()
     plt.show()
@@ -140,7 +144,7 @@ if __name__ == "__main__":
 
     # Initialize the model and load saved weights
     model = UNet(in_channels=1, out_channels=1).to(device)
-    model_path = "10,2,0,4,1,0.5,25,Global.pth"
+    model_path = "10,5,0,4,1,0.7,25,Global.pth"
     if os.path.exists(model_path):
         model.load_state_dict(torch.load(model_path, map_location=device))
         print(f"Loaded model weights from {model_path}")
