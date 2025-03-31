@@ -1,7 +1,8 @@
 # Federated Learning Experiment
 
 This repo contains the code for running a federated learning experiment with Flower and a U-Net segmentation model.
-please change directories into ./2_Unet_Experiment as this is our most up to date FL implementation :) 
+please change directories into ./2_Unet_Experiment as this is our most up to date FL implementation :) Inside this experiment
+you will find a python start parameters file, when you edit these constants you change the FL and some regular hyperparameters.
 
 ## Usage
 
